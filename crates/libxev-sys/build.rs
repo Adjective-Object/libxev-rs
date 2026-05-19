@@ -95,10 +95,25 @@ fn main() {
     std::fs::create_dir_all(&zig_out).expect("create zig out dir");
 
     let target = env::var("TARGET").unwrap();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     let zig_target = rust_target_to_zig(&target);
 
+    // On Windows we need to teach the Zig static library to bundle
+    // compiler_rt symbols (`__chkstk_ms` et al.) which are otherwise
+    // unresolved when MSVC's linker pulls in xev.lib. We don't want to
+    // mutate the vendored sources, so we copy them into OUT_DIR and
+    // hot-patch `build.zig` there.
+    let build_dir = if target_os == "windows" {
+        let staged = out_dir.join("build-tree");
+        prepare_windows_build_tree(&vendor_dir, &staged);
+        staged
+    } else {
+        vendor_dir.clone()
+    };
+
     let mut cmd = Command::new(&zig);
-    cmd.current_dir(&vendor_dir)
+    cmd.current_dir(&build_dir)
         .arg("build")
         .arg(format!("-Doptimize={optimize}"))
         .arg("-Demit-man-pages=false")
@@ -125,11 +140,19 @@ fn main() {
     println!("cargo:rustc-link-lib=static=xev");
 
     // libxev links libc; on Windows it also needs ws2_32 and mswsock.
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     match target_os.as_str() {
         "windows" => {
             println!("cargo:rustc-link-lib=dylib=ws2_32");
             println!("cargo:rustc-link-lib=dylib=mswsock");
+            if target_env == "msvc" {
+                // Zig's std references `LdrRegisterDllNotification`, which
+                // ntdll.dll exports but the Windows SDK's ntdll.lib does
+                // not. Generate a tiny import lib from a .def using
+                // lib.exe and link against it.
+                generate_ntdll_extras_lib(&target, &out_dir);
+                println!("cargo:rustc-link-search=native={}", out_dir.display());
+                println!("cargo:rustc-link-lib=dylib=ntdll_extras");
+            }
         }
         "macos" | "ios" => {
             // libSystem provides libc; nothing extra typically required.
@@ -293,4 +316,89 @@ fn rust_target_to_zig(rust_target: &str) -> Option<String> {
         Some(abi) => format!("{zig_arch}-{zig_os}-{abi}"),
         None => format!("{zig_arch}-{zig_os}"),
     })
+}
+
+/// Stage a copy of the vendored libxev tree under `dst` and hot-patch
+/// `build.zig` so the Windows static library bundles compiler_rt symbols
+/// (`__chkstk_ms` etc.). Returning the path to the patched tree lets the
+/// caller invoke `zig build` against it without mutating the committed
+/// vendor directory.
+fn prepare_windows_build_tree(src: &Path, dst: &Path) {
+    re_vendor_fork(src, dst);
+
+    let build_zig = dst.join("build.zig");
+    let original = std::fs::read_to_string(&build_zig)
+        .unwrap_or_else(|e| panic!("read {}: {e}", build_zig.display()));
+
+    // Insert `static_lib.bundle_compiler_rt = true;` at the top of the
+    // `if (target.result.os.tag == .windows)` block that configures the
+    // static library. The marker must match the upstream formatting.
+    let needle = "if (target.result.os.tag == .windows) {\n            static_lib.root_module.linkSystemLibrary(\"ws2_32\", .{});";
+    let replacement = "if (target.result.os.tag == .windows) {\n            static_lib.bundle_compiler_rt = true;\n            static_lib.root_module.linkSystemLibrary(\"ws2_32\", .{});";
+
+    if !original.contains(needle) {
+        panic!(
+            "could not locate the windows static-lib block in {} to hot-patch \
+             (libxev's build.zig changed format?)",
+            build_zig.display()
+        );
+    }
+
+    let patched = original.replace(needle, replacement);
+    std::fs::write(&build_zig, patched)
+        .unwrap_or_else(|e| panic!("write {}: {e}", build_zig.display()));
+}
+
+/// Generate `ntdll_extras.lib` in `out_dir` containing import stubs for
+/// ntdll symbols that the Windows SDK's `ntdll.lib` omits but Zig's std
+/// references (currently just `LdrRegisterDllNotification`).
+#[cfg(windows)]
+fn generate_ntdll_extras_lib(target: &str, out_dir: &Path) {
+    use std::io::Write;
+
+    let def_path = out_dir.join("ntdll_extras.def");
+    let lib_path = out_dir.join("ntdll_extras.lib");
+
+    let mut def = std::fs::File::create(&def_path)
+        .unwrap_or_else(|e| panic!("create {}: {e}", def_path.display()));
+    writeln!(def, "LIBRARY ntdll").unwrap();
+    writeln!(def, "EXPORTS").unwrap();
+    writeln!(def, "    LdrRegisterDllNotification").unwrap();
+    writeln!(def, "    LdrUnregisterDllNotification").unwrap();
+    drop(def);
+
+    let machine = if target.starts_with("x86_64") {
+        "X64"
+    } else if target.starts_with("aarch64") {
+        "ARM64"
+    } else if target.starts_with("i686") || target.starts_with("i586") {
+        "X86"
+    } else {
+        panic!("unsupported windows target for ntdll_extras: {target}");
+    };
+
+    let mut lib_cmd = cc::windows_registry::find_tool(target, "lib.exe")
+        .unwrap_or_else(|| panic!("could not locate lib.exe for target {target}"))
+        .to_command();
+    lib_cmd
+        .arg(format!("/def:{}", def_path.display()))
+        .arg(format!("/out:{}", lib_path.display()))
+        .arg(format!("/machine:{machine}"))
+        .arg("/nologo");
+
+    let status = lib_cmd
+        .status()
+        .unwrap_or_else(|e| panic!("failed to invoke lib.exe: {e}"));
+    if !status.success() {
+        panic!("lib.exe failed with status {status} while building ntdll_extras.lib");
+    }
+}
+
+/// Stub for non-Windows hosts (the .lib generation is host-tooling driven).
+#[cfg(not(windows))]
+fn generate_ntdll_extras_lib(_target: &str, _out_dir: &Path) {
+    panic!(
+        "ntdll_extras.lib generation requires running build.rs on a Windows host; \
+         cross-compiling libxev-sys to windows-msvc from another OS is unsupported"
+    );
 }

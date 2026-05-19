@@ -11,6 +11,9 @@ keywords = ["libxev", "bindings", "uring"]
 [build-dependencies]
 bindgen = "0.72"
 
+[target.'cfg(windows)'.build-dependencies]
+cc = "1"
+
 [dependencies]
 
 [features]
