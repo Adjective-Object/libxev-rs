@@ -327,8 +327,13 @@ fn prepare_windows_build_tree(src: &Path, dst: &Path) {
     re_vendor_fork(src, dst);
 
     let build_zig = dst.join("build.zig");
-    let original = std::fs::read_to_string(&build_zig)
+    let raw = std::fs::read_to_string(&build_zig)
         .unwrap_or_else(|e| panic!("read {}: {e}", build_zig.display()));
+
+    // Normalize CRLF -> LF so the literal needle below matches regardless
+    // of how git checked the vendor tree out (Windows autocrlf would
+    // otherwise convert these to CRLF and break the match).
+    let original = raw.replace("\r\n", "\n");
 
     // Insert `static_lib.bundle_compiler_rt = true;` at the top of the
     // `if (target.result.os.tag == .windows)` block that configures the
