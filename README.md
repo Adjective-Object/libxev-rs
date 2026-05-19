@@ -30,9 +30,11 @@ tar xf zig-x86_64-linux-0.16.0.tar.xz -C $HOME
 echo 'export PATH="$PATH:$HOME/zig-x86_64-linux-0.16.0"' >> ~/.profile
 ```
 
-or on windows, use `scoop`, because [winget takes upwards of 20 minutes to extract the files](https://github.com/microsoft/winget-cli/issues/3306).
+Or on windows, use `scoop`, because [winget takes upwards of 20 minutes](https://github.com/microsoft/winget-cli/issues/3306).
+to extract the files
 
-This may still be slow due to interference from Windows Defender. You may want to add an exeption for `~/scoop`.
+This may still be slow due to interference from Windows Defender. You may want
+to add an exeption for `~/scoop`.
 
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
