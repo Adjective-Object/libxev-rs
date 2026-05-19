@@ -3,12 +3,46 @@
 #![cfg(feature = "extended-api")]
 
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::os::fd::{FromRawFd, IntoRawFd};
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use libxev::extensions::File;
 use libxev::{CbAction, Completion, Loop, RunMode};
+
+#[cfg(unix)]
+use std::os::fd::{FromRawFd, IntoRawFd, RawFd};
+#[cfg(windows)]
+use std::os::windows::io::{FromRawHandle, IntoRawHandle, RawHandle};
+
+/// Cross-platform alias for whatever raw handle type `File::new` accepts.
+#[cfg(unix)]
+type RawFileHandle = RawFd;
+#[cfg(windows)]
+type RawFileHandle = RawHandle;
+
+fn into_raw(f: std::fs::File) -> RawFileHandle {
+    #[cfg(unix)]
+    {
+        f.into_raw_fd()
+    }
+    #[cfg(windows)]
+    {
+        f.into_raw_handle()
+    }
+}
+
+/// SAFETY: caller must guarantee `h` is a live, owned OS handle that
+/// nothing else will close.
+unsafe fn from_raw(h: RawFileHandle) -> std::fs::File {
+    #[cfg(unix)]
+    {
+        unsafe { std::fs::File::from_raw_fd(h) }
+    }
+    #[cfg(windows)]
+    {
+        unsafe { std::fs::File::from_raw_handle(h) }
+    }
+}
 
 fn temp_path(name: &str) -> std::path::PathBuf {
     let mut p = std::env::temp_dir();
@@ -23,14 +57,15 @@ fn file_write_then_pread_roundtrip() {
     let path = temp_path("write_pread.bin");
     let _ = std::fs::remove_file(&path);
     // Create the file empty, then take ownership of an O_RDWR fd.
-    let fd = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&path)
-        .unwrap()
-        .into_raw_fd();
+    let fd = into_raw(
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap(),
+    );
 
     let mut ev = Loop::new().unwrap();
     let mut file = File::new(fd).unwrap();
@@ -96,7 +131,7 @@ fn file_write_then_pread_roundtrip() {
     // Clean up: drop the watcher (no-op on fd), then close fd via std.
     drop(file);
     // Reclaim the fd to drop it cleanly.
-    let _ = unsafe { std::fs::File::from_raw_fd(fd) };
+    let _ = unsafe { from_raw(fd) };
     let _ = std::fs::remove_file(&path);
 }
 
@@ -110,11 +145,7 @@ fn file_read_owned_returns_bytes() {
         f.sync_all().unwrap();
     }
 
-    let fd = std::fs::OpenOptions::new()
-        .read(true)
-        .open(&path)
-        .unwrap()
-        .into_raw_fd();
+    let fd = into_raw(std::fs::OpenOptions::new().read(true).open(&path).unwrap());
 
     let mut ev = Loop::new().unwrap();
     let mut file = File::new(fd).unwrap();
@@ -140,7 +171,7 @@ fn file_read_owned_returns_bytes() {
     assert_eq!(&bytes, b"abcdefgh");
 
     drop(file);
-    let _ = unsafe { std::fs::File::from_raw_fd(fd) };
+    let _ = unsafe { from_raw(fd) };
     let _ = std::fs::remove_file(&path);
 }
 
@@ -148,14 +179,15 @@ fn file_read_owned_returns_bytes() {
 fn file_pwrite_then_sync_read() {
     let path = temp_path("pwrite.bin");
     let _ = std::fs::remove_file(&path);
-    let fd = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&path)
-        .unwrap()
-        .into_raw_fd();
+    let fd = into_raw(
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap(),
+    );
 
     let mut ev = Loop::new().unwrap();
     let mut file = File::new(fd).unwrap();
@@ -193,7 +225,7 @@ fn file_pwrite_then_sync_read() {
     // Verify with a synchronous read of the underlying file.
     drop(file);
     // Reclaim the fd to read it synchronously.
-    let mut f = unsafe { std::fs::File::from_raw_fd(fd) };
+    let mut f = unsafe { from_raw(fd) };
     f.seek(SeekFrom::Start(0)).unwrap();
     let mut data = Vec::new();
     f.read_to_end(&mut data).unwrap();

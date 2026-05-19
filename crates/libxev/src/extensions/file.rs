@@ -13,6 +13,10 @@
 use std::io;
 use std::mem::MaybeUninit;
 use std::os::raw::{c_int, c_void};
+#[cfg(unix)]
+use std::os::unix::io::RawFd;
+#[cfg(windows)]
+use std::os::windows::io::RawHandle;
 
 use libxev_sys as sys;
 
@@ -46,13 +50,25 @@ fn decode_rw(result: isize) -> io::Result<usize> {
 impl File {
     /// Wrap an existing raw file descriptor. The fd is not duplicated
     /// and not closed on drop.
-    pub fn new(fd: c_int) -> io::Result<Self> {
-        let mut raw: Box<MaybeUninit<sys::xev_watcher>> = Box::new(MaybeUninit::zeroed());
+    #[cfg(unix)]
+    pub fn new(fd: RawFd) -> io::Result<Self> {
         // The C ABI is `uintptr_t` so a Windows HANDLE can be passed
         // without truncation. Sign-extend the POSIX fd through isize so
         // sentinel values like -1 round-trip correctly.
         let fd_word = fd as isize as usize;
-        let rc = unsafe { sys::xev_file_init(raw.as_mut_ptr(), fd_word) };
+        Self::from_handle_word(fd_word)
+    }
+
+    /// Wrap an existing raw Windows `HANDLE`. The handle is not
+    /// duplicated and not closed on drop.
+    #[cfg(windows)]
+    pub fn new(handle: RawHandle) -> io::Result<Self> {
+        Self::from_handle_word(handle as usize)
+    }
+
+    fn from_handle_word(handle: usize) -> io::Result<Self> {
+        let mut raw: Box<MaybeUninit<sys::xev_watcher>> = Box::new(MaybeUninit::zeroed());
+        let rc = unsafe { sys::xev_file_init(raw.as_mut_ptr(), handle) };
         if rc != 0 {
             return Err(io::Error::from_raw_os_error(rc));
         }
