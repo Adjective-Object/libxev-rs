@@ -3,6 +3,8 @@ name = "libxev"
 version.workspace = true
 edition.workspace = true
 description = "High-level Rust bindings for libxev."
+homepage = "https://github.com/Adjective-Object/libxev-rs"
+repository = "https://github.com/Adjective-Object/libxev-rs"
 license = "MIT"
 keywords = ["libxev", "bindings", "uring"]
 

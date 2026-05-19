@@ -2,6 +2,8 @@
 name = "libxev-sys"
 version.workspace = true
 edition.workspace = true
+homepage = "https://github.com/Adjective-Object/libxev-rs"
+repository = "https://github.com/Adjective-Object/libxev-rs"
 description = "Low-level FFI bindings to libxev (built from vendored sources via Zig)."
 license = "MIT"
 links = "xev"
