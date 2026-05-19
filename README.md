@@ -24,10 +24,23 @@ cargo add libxev --features extended-api # build our fork
 
 1. Install [zig](https://ziglang.org/download/#release-0.16.0) and [cargo](https://rustup.rs/)
 
-```text
+```sh
 wget https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
 tar xf zig-x86_64-linux-0.16.0.tar.xz -C $HOME
 echo 'export PATH="$PATH:$HOME/zig-x86_64-linux-0.16.0"' >> ~/.profile
+```
+
+or on windows, use `scoop`, because [winget takes upwards of 20 minutes to extract the files](https://github.com/microsoft/winget-cli/issues/3306).
+
+This may still be slow due to interference from Windows Defender. You may want to add an exeption for `~/scoop`.
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+scoop checkup # then fix issues reported by scoop checkup
+
+scoop install zig
+scoop install llvm # for libclang bindings, used in build.rs in bindgen
 ```
 
 2. Install binstall -> nextest
