@@ -1,6 +1,6 @@
 [package]
 name = "libxev"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 description = "High-level Rust bindings for libxev."
 license = "MIT"

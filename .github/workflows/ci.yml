@@ -34,8 +34,11 @@ jobs:
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@main
 
+      # Cargo nextest has prebuilds for linux, but not for macos or windows.
+      # fall-back to `cargo test` instead.
       - name: Install cargo-nextest
-        run: cargo binstall --no-confirm cargo-nextest
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo binstall --no-confirm cargo-nextest --locked
 
       - name: Cache cargo registry & target
         uses: Swatinem/rust-cache@v2

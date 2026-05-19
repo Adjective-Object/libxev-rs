@@ -158,6 +158,8 @@ fn main() {
         .allowlist_var("XEV_.*")
         .derive_default(true)
         .layout_tests(false)
+        // Emit `unsafe extern "C"` blocks (required under edition 2024).
+        .rust_edition(bindgen::RustEdition::Edition2024)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("failed to generate bindings for xev.h");

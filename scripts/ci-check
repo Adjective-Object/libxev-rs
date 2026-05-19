@@ -14,8 +14,14 @@ run() {
 # Formatting must be clean.
 run cargo fmt --all -- --check
 
-# Tests across the workspace.
-run cargo nextest run --workspace --no-fail-fast
+# Tests across the workspace. Prefer nextest (per-test timeouts) when
+# available; fall back to `cargo test` otherwise.
+if cargo nextest --version >/dev/null 2>&1; then
+    run cargo nextest run --workspace --no-fail-fast
+else
+    echo "note: cargo-nextest not found, falling back to 'cargo test'"
+    run cargo test --workspace --no-fail-fast
+fi
 
 # Clippy: fail on any warning. Run both with and without extended-api so
 # the gated `extensions/` modules are also linted.

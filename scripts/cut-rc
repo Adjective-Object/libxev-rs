@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Cut a new release candidate.
+#
+# - Errors if the git index has uncommitted changes
+# - Reads the current version from workspace.package.version in Cargo.toml
+# - Bumps to the next -rc.N pre-release
+# - Commits the version change and tags it
+#
+# If the current version has no pre-release suffix (e.g. 0.1.0),
+# the patch is bumped and -rc.0 is appended → 0.1.1-rc.0.
+#
+# If it already has an -rc.N suffix, N is incremented → -rc.(N+1).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+cd "$REPO_ROOT"
+
+# --- parse flags ---
+PUSH=0
+for arg in "$@"; do
+  case "$arg" in
+    --push) PUSH=1 ;;
+    *) echo "error: unknown argument '$arg'" >&2; exit 1 ;;
+  esac
+done
+
+# --- guard: no staged/unstaged changes ---
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "error: working tree has uncommitted changes; commit or stash them first" >&2
+  exit 1
+fi
+
+# --- parse current version ---
+CURRENT=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p;}' Cargo.toml)
+if [[ -z "$CURRENT" ]]; then
+  echo "error: could not read workspace.package.version from Cargo.toml" >&2
+  exit 1
+fi
+echo "current version: $CURRENT"
+
+# --- compute next version ---
+# Split into base (MAJOR.MINOR.PATCH) and pre-release suffix
+if [[ "$CURRENT" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-(.+))?$ ]]; then
+  MAJOR="${BASH_REMATCH[1]}"
+  MINOR="${BASH_REMATCH[2]}"
+  PATCH="${BASH_REMATCH[3]}"
+  PRERELEASE="${BASH_REMATCH[5]:-}"
+else
+  echo "error: version '$CURRENT' is not valid semver" >&2
+  exit 1
+fi
+
+if [[ -z "$PRERELEASE" ]]; then
+  # No suffix → bump patch, start at rc.0
+  PATCH=$((PATCH + 1))
+  NEXT="${MAJOR}.${MINOR}.${PATCH}-rc.0"
+elif [[ "$PRERELEASE" =~ ^rc\.([0-9]+)$ ]]; then
+  # Already an rc → increment
+  RC="${BASH_REMATCH[1]}"
+  NEXT="${MAJOR}.${MINOR}.${PATCH}-rc.$((RC + 1))"
+else
+  echo "error: unexpected pre-release suffix '$PRERELEASE'; expected rc.N" >&2
+  exit 1
+fi
+
+echo "next version:    $NEXT"
+
+# --- update Cargo.toml ---
+sed -i "/^\[workspace\.package\]/,/^\[/{s/^version = \".*\"/version = \"$NEXT\"/}" Cargo.toml
+
+# Keep workspace.dependencies version requirements in sync so cargo
+# publish accepts the path-deps. Matches `version = "..."` only inside
+# the [workspace.dependencies] section.
+sed -i "/^\[workspace\.dependencies\]/,/^\[/{s/version = \"[^\"]*\"/version = \"$NEXT\"/}" Cargo.toml
+
+# --- update lockfile ---
+cargo update -w --locked 2>/dev/null || cargo update -w
+
+# --- commit and tag ---
+TAG="v${NEXT}"
+git add Cargo.toml Cargo.lock
+git commit -m "$TAG"
+git tag "$TAG"
+
+echo ""
+echo "created commit and tag: $TAG"
+
+if [[ "$PUSH" -eq 1 ]]; then
+  git push && git push --tags
+else
+  echo "run 'git push && git push --tags' to publish"
+fi
