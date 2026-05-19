@@ -56,5 +56,6 @@ cargo binstall cargo-nextest
 cargo nextest --no-fail-fast # Run tests
 
 # iterate on your local fork of libxev
+# e.g. https://github.com/Adjective-Object/libxev/tree/file-api
 LIBXEV_SOURCE=/path/to/libxev-fork cargo build --features local-fork
 ```
