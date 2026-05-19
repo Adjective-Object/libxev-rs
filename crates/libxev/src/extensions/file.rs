@@ -48,7 +48,11 @@ impl File {
     /// and not closed on drop.
     pub fn new(fd: c_int) -> io::Result<Self> {
         let mut raw: Box<MaybeUninit<sys::xev_watcher>> = Box::new(MaybeUninit::zeroed());
-        let rc = unsafe { sys::xev_file_init(raw.as_mut_ptr(), fd) };
+        // The C ABI is `uintptr_t` so a Windows HANDLE can be passed
+        // without truncation. Sign-extend the POSIX fd through isize so
+        // sentinel values like -1 round-trip correctly.
+        let fd_word = fd as isize as usize;
+        let rc = unsafe { sys::xev_file_init(raw.as_mut_ptr(), fd_word) };
         if rc != 0 {
             return Err(io::Error::from_raw_os_error(rc));
         }

@@ -102,7 +102,11 @@ void xev_async_wait(xev_watcher *w, xev_loop* loop, xev_completion* c, void* use
 typedef xev_cb_action (*xev_file_cb)(xev_loop* l, xev_completion* c, int result, void* userdata);
 typedef xev_cb_action (*xev_file_rw_cb)(xev_loop* l, xev_completion* c, intptr_t result, void* userdata);
 
-int xev_file_init(xev_watcher *w, int fd);
+/* `fd` is an OS file handle. On POSIX, it is the integer file descriptor.
+ * On Windows, it is the HANDLE value (cast through uintptr_t). Using
+ * uintptr_t lets the same prototype carry both kinds of handle without
+ * truncating a 64-bit HANDLE on 64-bit Windows. */
+int xev_file_init(xev_watcher *w, uintptr_t fd);
 void xev_file_deinit(xev_watcher *w);
 void xev_file_close(xev_watcher *w, xev_loop* loop, xev_completion* c, void* userdata, xev_file_cb cb);
 void xev_file_read(xev_watcher *w, xev_loop* loop, xev_completion* c, void* buf, size_t len, void* userdata, xev_file_rw_cb cb);
