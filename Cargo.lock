@@ -118,14 +118,14 @@ dependencies = [
 
 [[package]]
 name = "libxev"
-version = "0.0.1-rc.0"
+version = "0.0.1-rc.1"
 dependencies = [
  "libxev-sys",
 ]
 
 [[package]]
 name = "libxev-sys"
-version = "0.0.1-rc.0"
+version = "0.0.1-rc.1"
 dependencies = [
  "bindgen",
  "cc",

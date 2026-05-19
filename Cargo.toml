@@ -4,8 +4,8 @@ members = ["crates/*"]
 
 [workspace.package]
 edition = "2024"
-version = "0.0.1-rc.0"
+version = "0.0.1-rc.1"
 
 [workspace.dependencies]
-libxev-sys = { path = "crates/libxev-sys", version = "0.0.1-rc.0" }
-libxev = { path = "crates/libxev", version = "0.0.1-rc.0" }
+libxev-sys = { path = "crates/libxev-sys", version = "0.0.1-rc.1" }
+libxev = { path = "crates/libxev", version = "0.0.1-rc.1" }
