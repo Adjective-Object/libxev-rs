@@ -6,6 +6,7 @@ description = "Low-level FFI bindings to libxev (built from vendored sources via
 license = "MIT"
 links = "xev"
 build = "build.rs"
+keywords = ["libxev", "bindings", "uring"]
 
 [build-dependencies]
 bindgen = "0.70"
