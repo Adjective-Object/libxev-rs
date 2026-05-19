@@ -8,6 +8,15 @@ license = "MIT"
 [dependencies]
 libxev-sys.workspace = true
 
+[features]
+default = []
+# Build from the vendored libxev fork (`vendor/libxev-fork`) and enable the
+# Rust-side wrappers under `src/extensions/` that depend on the extra C API.
+extended-api = ["libxev-sys/extended-api"]
+# Developer-only: re-vendor `vendor/libxev-fork` from `$LIBXEV_SOURCE` before
+# building. Implies `extended-api`.
+local-fork = ["libxev-sys/local-fork", "extended-api"]
+
 [lib]
 path = "src/lib.rs"
 

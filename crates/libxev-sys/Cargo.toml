@@ -16,3 +16,9 @@ bindgen = "0.70"
 default = []
 # Build libxev with Zig's Debug mode instead of ReleaseFast.
 debug = []
+# Build from `vendor/libxev-fork` (a vendored fork that exposes additional
+# C-API surface) instead of the upstream `vendor/libxev` tree.
+extended-api = []
+# Developer-only: before building, copy the source tree at `$LIBXEV_SOURCE`
+# into `vendor/libxev-fork`, then build from it. Implies `extended-api`.
+local-fork = ["extended-api"]

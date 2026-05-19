@@ -11,6 +11,9 @@ pub use threadpool::{Batch, Config as ThreadPoolConfig, Task, ThreadPool};
 mod watcher;
 pub use watcher::{Async, CbAction, Completion, CompletionRef, CompletionState, LoopRef, Timer};
 
+#[cfg(feature = "extended-api")]
+pub mod extensions;
+
 use std::io;
 use std::mem::MaybeUninit;
 

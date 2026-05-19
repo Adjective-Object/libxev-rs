@@ -4,8 +4,66 @@ use std::process::Command;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let vendor_dir = manifest_dir.join("vendor").join("libxev");
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+    let extended_api = env::var_os("CARGO_FEATURE_EXTENDED_API").is_some();
+    let local_fork = env::var_os("CARGO_FEATURE_LOCAL_FORK").is_some();
+
+    // `local-fork` mutates the committed `vendor/libxev-fork` tree and is
+    // intended strictly as a developer workflow. Refuse to use it in release
+    // builds so a downstream consumer doesn't accidentally re-vendor the
+    // fork from whatever happens to be on their machine.
+    if local_fork && env::var("PROFILE").as_deref() == Ok("release") {
+        panic!(
+            "feature `local-fork` is for development only and cannot be used \
+             in release builds. If you want to consume the vendored fork, \
+             enable `--features extended-api` instead."
+        );
+    }
+
+    let fork_dir = manifest_dir.join("vendor").join("libxev-fork");
+    let upstream_dir = manifest_dir.join("vendor").join("libxev");
+
+    // `local-fork` re-vendors `vendor/libxev-fork` from `$LIBXEV_SOURCE`
+    // before building. This is a developer workflow — it mutates the
+    // committed source tree on purpose.
+    println!("cargo:rerun-if-env-changed=LIBXEV_SOURCE");
+    if local_fork {
+        let src = env::var("LIBXEV_SOURCE").unwrap_or_else(|_| {
+            panic!(
+                "feature `local-fork` is enabled but LIBXEV_SOURCE is not set; \
+                 point it at a local libxev checkout to re-vendor it"
+            )
+        });
+        let src_path = PathBuf::from(&src);
+        if !src_path.join("build.zig").is_file() {
+            panic!(
+                "LIBXEV_SOURCE={src} does not look like a libxev checkout \
+                 (no build.zig)"
+            );
+        }
+        re_vendor_fork(&src_path, &fork_dir);
+        rerun_if_tree_changed(&src_path.join("src"));
+        rerun_if_tree_changed(&src_path.join("include"));
+        println!(
+            "cargo:rerun-if-changed={}",
+            src_path.join("build.zig").display()
+        );
+    }
+
+    let vendor_dir = if extended_api {
+        if !fork_dir.join("build.zig").is_file() {
+            panic!(
+                "feature `extended-api` is enabled but {} is empty; \
+                 build once with `--features local-fork` and \
+                 LIBXEV_SOURCE pointing at the fork to populate it",
+                fork_dir.display()
+            );
+        }
+        fork_dir
+    } else {
+        upstream_dir
+    };
 
     // Re-run when vendored sources change.
     println!("cargo:rerun-if-changed=build.rs");
@@ -120,6 +178,71 @@ fn rerun_if_tree_changed(path: &Path) {
             rerun_if_tree_changed(&p);
         } else {
             println!("cargo:rerun-if-changed={}", p.display());
+        }
+    }
+}
+
+/// Copy a libxev checkout at `src` into `dst`, replacing any existing
+/// contents. Skips VCS and build-artifact directories.
+fn re_vendor_fork(src: &Path, dst: &Path) {
+    const SKIP: &[&str] = &[
+        ".git",
+        ".github",
+        ".zig-cache",
+        "zig-cache",
+        "zig-out",
+        "website",
+        "target",
+        "node_modules",
+    ];
+
+    if dst.exists() {
+        std::fs::remove_dir_all(dst)
+            .unwrap_or_else(|e| panic!("failed to remove {}: {e}", dst.display()));
+    }
+    std::fs::create_dir_all(dst)
+        .unwrap_or_else(|e| panic!("failed to create {}: {e}", dst.display()));
+
+    copy_tree(src, dst, SKIP);
+}
+
+fn copy_tree(src: &Path, dst: &Path, skip: &[&str]) {
+    let entries = std::fs::read_dir(src)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", src.display()));
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if skip.iter().any(|s| *s == name_str) {
+            continue;
+        }
+        let from = entry.path();
+        let to = dst.join(&name);
+        let file_type = entry
+            .file_type()
+            .unwrap_or_else(|e| panic!("file_type {}: {e}", from.display()));
+        if file_type.is_dir() {
+            std::fs::create_dir_all(&to)
+                .unwrap_or_else(|e| panic!("mkdir {}: {e}", to.display()));
+            copy_tree(&from, &to, skip);
+        } else if file_type.is_symlink() {
+            // Resolve through the link to keep the fork self-contained.
+            let target = std::fs::read_link(&from)
+                .unwrap_or_else(|e| panic!("readlink {}: {e}", from.display()));
+            let resolved = if target.is_absolute() {
+                target
+            } else {
+                from.parent().unwrap().join(target)
+            };
+            if resolved.is_dir() {
+                std::fs::create_dir_all(&to).ok();
+                copy_tree(&resolved, &to, skip);
+            } else {
+                std::fs::copy(&resolved, &to)
+                    .unwrap_or_else(|e| panic!("copy {} -> {}: {e}", resolved.display(), to.display()));
+            }
+        } else {
+            std::fs::copy(&from, &to)
+                .unwrap_or_else(|e| panic!("copy {} -> {}: {e}", from.display(), to.display()));
         }
     }
 }
