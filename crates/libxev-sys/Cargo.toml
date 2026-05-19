@@ -1,0 +1,7 @@
+[package]
+name = "libxev-sys"
+version = "0.1.0"
+links = "libxev"
+edition.workspace = true
+
+[dependencies]
