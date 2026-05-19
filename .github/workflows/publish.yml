@@ -17,9 +17,10 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     # OIDC trusted-publishing to crates.io requires `id-token: write`.
+    # Creating a GitHub release requires `contents: write`.
     permissions:
       id-token: write
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -57,3 +58,20 @@ jobs:
         # libxev depends on the libxev-sys we just published; crates.io
         # may take a moment to surface the new version in its index.
         run: cargo publish -p libxev --locked
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          flags=()
+          # Tags like v0.1.1-rc.0 are pre-releases.
+          if [[ "$tag" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$tag" \
+            --generate-notes \
+            "${flags[@]}"
