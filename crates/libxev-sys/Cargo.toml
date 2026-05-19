@@ -1,7 +1,18 @@
 [package]
 name = "libxev-sys"
 version = "0.1.0"
-links = "libxev"
-edition.workspace = true
+edition = "2021"
+description = "Low-level FFI bindings to libxev (built from vendored sources via Zig)."
+license = "MIT"
+links = "xev"
+build = "build.rs"
+
+[build-dependencies]
+bindgen = "0.70"
 
 [dependencies]
+
+[features]
+default = []
+# Build libxev with Zig's Debug mode instead of ReleaseFast.
+debug = []
