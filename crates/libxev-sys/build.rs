@@ -207,8 +207,8 @@ fn re_vendor_fork(src: &Path, dst: &Path) {
 }
 
 fn copy_tree(src: &Path, dst: &Path, skip: &[&str]) {
-    let entries = std::fs::read_dir(src)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", src.display()));
+    let entries =
+        std::fs::read_dir(src).unwrap_or_else(|e| panic!("failed to read {}: {e}", src.display()));
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
@@ -221,8 +221,7 @@ fn copy_tree(src: &Path, dst: &Path, skip: &[&str]) {
             .file_type()
             .unwrap_or_else(|e| panic!("file_type {}: {e}", from.display()));
         if file_type.is_dir() {
-            std::fs::create_dir_all(&to)
-                .unwrap_or_else(|e| panic!("mkdir {}: {e}", to.display()));
+            std::fs::create_dir_all(&to).unwrap_or_else(|e| panic!("mkdir {}: {e}", to.display()));
             copy_tree(&from, &to, skip);
         } else if file_type.is_symlink() {
             // Resolve through the link to keep the fork self-contained.
@@ -237,8 +236,9 @@ fn copy_tree(src: &Path, dst: &Path, skip: &[&str]) {
                 std::fs::create_dir_all(&to).ok();
                 copy_tree(&resolved, &to, skip);
             } else {
-                std::fs::copy(&resolved, &to)
-                    .unwrap_or_else(|e| panic!("copy {} -> {}: {e}", resolved.display(), to.display()));
+                std::fs::copy(&resolved, &to).unwrap_or_else(|e| {
+                    panic!("copy {} -> {}: {e}", resolved.display(), to.display())
+                });
             }
         } else {
             std::fs::copy(&from, &to)

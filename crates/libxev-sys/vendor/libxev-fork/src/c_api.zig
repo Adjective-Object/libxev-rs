@@ -316,6 +316,237 @@ export fn xev_async_wait(
 }
 
 //-------------------------------------------------------------------
+// File
+
+export fn xev_file_init(v: *xev.File, fd: c_int) c_int {
+    v.* = xev.File.initFd(fd);
+    return 0;
+}
+
+export fn xev_file_deinit(v: *xev.File) void {
+    v.deinit();
+}
+
+export fn xev_file_close(
+    v: *xev.File,
+    loop: *xev.Loop,
+    c: *xev.Completion,
+    userdata: ?*anyopaque,
+    cb: *const fn (
+        *xev.Loop,
+        *xev.Completion,
+        c_int,
+        ?*anyopaque,
+    ) callconv(func_callconv) xev.CallbackAction,
+) void {
+    const Callback = @typeInfo(@TypeOf(cb)).pointer.child;
+    const extern_c = @as(*Completion, @ptrCast(@alignCast(c)));
+    extern_c.c_callback = @as(*const anyopaque, @ptrCast(cb));
+
+    v.close(loop, c, anyopaque, userdata, (struct {
+        fn callback(
+            ud: ?*anyopaque,
+            cb_loop: *xev.Loop,
+            cb_c: *xev.Completion,
+            _: xev.File,
+            r: xev.CloseError!void,
+        ) xev.CallbackAction {
+            const cb_extern_c = @as(*Completion, @ptrCast(cb_c));
+            const cb_c_callback = @as(
+                *const Callback,
+                @ptrCast(@alignCast(cb_extern_c.c_callback)),
+            );
+            return @call(.auto, cb_c_callback, .{
+                cb_loop,
+                cb_c,
+                if (r) |_| 0 else |err| errorCode(err),
+                ud,
+            });
+        }
+    }).callback);
+}
+
+/// Encode a read/write result. >= 0 means bytes transferred,
+/// < 0 means -errorCode(err).
+fn rwResult(comptime E: type, r: E!usize) isize {
+    if (r) |v_ok| {
+        return @intCast(v_ok);
+    } else |err| {
+        return -@as(isize, @intCast(errorCode(err)));
+    }
+}
+
+export fn xev_file_read(
+    v: *xev.File,
+    loop: *xev.Loop,
+    c: *xev.Completion,
+    buf: [*]u8,
+    len: usize,
+    userdata: ?*anyopaque,
+    cb: *const fn (
+        *xev.Loop,
+        *xev.Completion,
+        isize,
+        ?*anyopaque,
+    ) callconv(func_callconv) xev.CallbackAction,
+) void {
+    const Callback = @typeInfo(@TypeOf(cb)).pointer.child;
+    const extern_c = @as(*Completion, @ptrCast(@alignCast(c)));
+    extern_c.c_callback = @as(*const anyopaque, @ptrCast(cb));
+
+    v.read(loop, c, .{ .slice = buf[0..len] }, anyopaque, userdata, (struct {
+        fn callback(
+            ud: ?*anyopaque,
+            cb_loop: *xev.Loop,
+            cb_c: *xev.Completion,
+            _: xev.File,
+            _: xev.ReadBuffer,
+            r: xev.ReadError!usize,
+        ) xev.CallbackAction {
+            const cb_extern_c = @as(*Completion, @ptrCast(cb_c));
+            const cb_c_callback = @as(
+                *const Callback,
+                @ptrCast(@alignCast(cb_extern_c.c_callback)),
+            );
+            return @call(.auto, cb_c_callback, .{
+                cb_loop,
+                cb_c,
+                rwResult(xev.ReadError, r),
+                ud,
+            });
+        }
+    }).callback);
+}
+
+export fn xev_file_pread(
+    v: *xev.File,
+    loop: *xev.Loop,
+    c: *xev.Completion,
+    buf: [*]u8,
+    len: usize,
+    offset: u64,
+    userdata: ?*anyopaque,
+    cb: *const fn (
+        *xev.Loop,
+        *xev.Completion,
+        isize,
+        ?*anyopaque,
+    ) callconv(func_callconv) xev.CallbackAction,
+) void {
+    const Callback = @typeInfo(@TypeOf(cb)).pointer.child;
+    const extern_c = @as(*Completion, @ptrCast(@alignCast(c)));
+    extern_c.c_callback = @as(*const anyopaque, @ptrCast(cb));
+
+    v.pread(loop, c, .{ .slice = buf[0..len] }, offset, anyopaque, userdata, (struct {
+        fn callback(
+            ud: ?*anyopaque,
+            cb_loop: *xev.Loop,
+            cb_c: *xev.Completion,
+            _: xev.File,
+            _: xev.ReadBuffer,
+            r: xev.ReadError!usize,
+        ) xev.CallbackAction {
+            const cb_extern_c = @as(*Completion, @ptrCast(cb_c));
+            const cb_c_callback = @as(
+                *const Callback,
+                @ptrCast(@alignCast(cb_extern_c.c_callback)),
+            );
+            return @call(.auto, cb_c_callback, .{
+                cb_loop,
+                cb_c,
+                rwResult(xev.ReadError, r),
+                ud,
+            });
+        }
+    }).callback);
+}
+
+export fn xev_file_write(
+    v: *xev.File,
+    loop: *xev.Loop,
+    c: *xev.Completion,
+    buf: [*]const u8,
+    len: usize,
+    userdata: ?*anyopaque,
+    cb: *const fn (
+        *xev.Loop,
+        *xev.Completion,
+        isize,
+        ?*anyopaque,
+    ) callconv(func_callconv) xev.CallbackAction,
+) void {
+    const Callback = @typeInfo(@TypeOf(cb)).pointer.child;
+    const extern_c = @as(*Completion, @ptrCast(@alignCast(c)));
+    extern_c.c_callback = @as(*const anyopaque, @ptrCast(cb));
+
+    v.write(loop, c, .{ .slice = buf[0..len] }, anyopaque, userdata, (struct {
+        fn callback(
+            ud: ?*anyopaque,
+            cb_loop: *xev.Loop,
+            cb_c: *xev.Completion,
+            _: xev.File,
+            _: xev.WriteBuffer,
+            r: xev.WriteError!usize,
+        ) xev.CallbackAction {
+            const cb_extern_c = @as(*Completion, @ptrCast(cb_c));
+            const cb_c_callback = @as(
+                *const Callback,
+                @ptrCast(@alignCast(cb_extern_c.c_callback)),
+            );
+            return @call(.auto, cb_c_callback, .{
+                cb_loop,
+                cb_c,
+                rwResult(xev.WriteError, r),
+                ud,
+            });
+        }
+    }).callback);
+}
+
+export fn xev_file_pwrite(
+    v: *xev.File,
+    loop: *xev.Loop,
+    c: *xev.Completion,
+    buf: [*]const u8,
+    len: usize,
+    offset: u64,
+    userdata: ?*anyopaque,
+    cb: *const fn (
+        *xev.Loop,
+        *xev.Completion,
+        isize,
+        ?*anyopaque,
+    ) callconv(func_callconv) xev.CallbackAction,
+) void {
+    const Callback = @typeInfo(@TypeOf(cb)).pointer.child;
+    const extern_c = @as(*Completion, @ptrCast(@alignCast(c)));
+    extern_c.c_callback = @as(*const anyopaque, @ptrCast(cb));
+
+    v.pwrite(loop, c, .{ .slice = buf[0..len] }, offset, anyopaque, userdata, (struct {
+        fn callback(
+            ud: ?*anyopaque,
+            cb_loop: *xev.Loop,
+            cb_c: *xev.Completion,
+            _: xev.File,
+            _: xev.WriteBuffer,
+            r: xev.WriteError!usize,
+        ) xev.CallbackAction {
+            const cb_extern_c = @as(*Completion, @ptrCast(cb_c));
+            const cb_c_callback = @as(
+                *const Callback,
+                @ptrCast(@alignCast(cb_extern_c.c_callback)),
+            );
+            return @call(.auto, cb_c_callback, .{
+                cb_loop,
+                cb_c,
+                rwResult(xev.WriteError, r),
+                ud,
+            });
+        }
+    }).callback);
+}
+
+//-------------------------------------------------------------------
 // Sync with xev.h
 
 /// Since we can't pass the callback at comptime with C, we have to

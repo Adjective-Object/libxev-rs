@@ -96,6 +96,20 @@ void xev_async_deinit(xev_watcher *w);
 int xev_async_notify(xev_watcher *w);
 void xev_async_wait(xev_watcher *w, xev_loop* loop, xev_completion* c, void* userdata, xev_async_cb cb);
 
+/* File. The callback for read/write/pread/pwrite encodes its result as a
+ * signed integer: >= 0 means bytes transferred, < 0 means an error and the
+ * value is -errorCode. */
+typedef xev_cb_action (*xev_file_cb)(xev_loop* l, xev_completion* c, int result, void* userdata);
+typedef xev_cb_action (*xev_file_rw_cb)(xev_loop* l, xev_completion* c, intptr_t result, void* userdata);
+
+int xev_file_init(xev_watcher *w, int fd);
+void xev_file_deinit(xev_watcher *w);
+void xev_file_close(xev_watcher *w, xev_loop* loop, xev_completion* c, void* userdata, xev_file_cb cb);
+void xev_file_read(xev_watcher *w, xev_loop* loop, xev_completion* c, void* buf, size_t len, void* userdata, xev_file_rw_cb cb);
+void xev_file_pread(xev_watcher *w, xev_loop* loop, xev_completion* c, void* buf, size_t len, uint64_t offset, void* userdata, xev_file_rw_cb cb);
+void xev_file_write(xev_watcher *w, xev_loop* loop, xev_completion* c, const void* buf, size_t len, void* userdata, xev_file_rw_cb cb);
+void xev_file_pwrite(xev_watcher *w, xev_loop* loop, xev_completion* c, const void* buf, size_t len, uint64_t offset, void* userdata, xev_file_rw_cb cb);
+
 #ifdef __cplusplus
 }
 #endif

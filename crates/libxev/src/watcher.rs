@@ -25,7 +25,7 @@ pub enum CbAction {
 }
 
 impl CbAction {
-    fn to_raw(self) -> sys::xev_cb_action {
+    pub(crate) fn to_raw(self) -> sys::xev_cb_action {
         match self {
             CbAction::Disarm => sys::xev_cb_action_XEV_DISARM,
             CbAction::Rearm => sys::xev_cb_action_XEV_REARM,
@@ -62,6 +62,21 @@ pub struct LoopRef<'a> {
 }
 
 impl<'a> LoopRef<'a> {
+    /// Construct a `LoopRef` from a raw libxev loop pointer.
+    ///
+    /// # Safety
+    ///
+    /// `raw` must point to a valid `xev_loop` that outlives `'a`, and the
+    /// caller must ensure no aliasing `&mut Loop` exists for the lifetime
+    /// of the returned reference (typical use: inside a libxev callback
+    /// where the loop is already mutably borrowed by `Loop::run`).
+    pub(crate) unsafe fn from_raw(raw: *mut sys::xev_loop) -> Self {
+        Self {
+            raw,
+            _marker: PhantomData,
+        }
+    }
+
     /// Cached monotonic time in milliseconds.
     pub fn now(&self) -> i64 {
         unsafe { sys::xev_loop_now(self.raw) }
@@ -85,6 +100,20 @@ pub struct CompletionRef<'a> {
 }
 
 impl<'a> CompletionRef<'a> {
+    /// Construct a `CompletionRef` from a raw libxev completion pointer.
+    ///
+    /// # Safety
+    ///
+    /// `raw` must point to a valid `xev_completion` that outlives `'a`,
+    /// and the caller must ensure no aliasing `&mut Completion` exists
+    /// for the lifetime of the returned reference.
+    pub(crate) unsafe fn from_raw(raw: *mut sys::xev_completion) -> Self {
+        Self {
+            raw,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn state(&mut self) -> CompletionState {
         CompletionState::from_raw(unsafe { sys::xev_completion_state(self.raw) })
     }
@@ -154,20 +183,25 @@ impl Completion {
 
     /// Install a new callback, dropping any previously installed one.
     /// Returns the thin userdata pointer to hand to libxev.
-    fn install_callback<F>(&mut self, cb: F) -> *mut c_void
+    pub(crate) fn install_callback<F>(&mut self, cb: F) -> *mut c_void
     where
         F: FnMut(&mut LoopRef<'_>, &mut CompletionRef<'_>, c_int) -> CbAction + Send + 'static,
     {
-        type DynCb = dyn FnMut(&mut LoopRef<'_>, &mut CompletionRef<'_>, c_int) -> CbAction + Send;
         let inner: Box<DynCb> = Box::new(cb);
         // Double-box so userdata is a thin pointer.
         let outer: Box<Box<DynCb>> = Box::new(inner);
         let ptr = Box::into_raw(outer) as *mut ();
-        self.callback = Some(CallbackOwner {
-            ptr,
-            drop_fn: drop_dyn_cb,
-        });
+        self.set_callback_owner(ptr, drop_dyn_cb);
         ptr as *mut c_void
+    }
+
+    /// Low-level: register a raw heap pointer + drop function as the
+    /// completion's current callback owner. Used by extension traits that
+    /// need to install non-`c_int` callback shapes (e.g. `isize` for
+    /// File read/write). The previously installed callback (if any) is
+    /// dropped first.
+    pub(crate) fn set_callback_owner(&mut self, ptr: *mut (), drop_fn: unsafe fn(*mut ())) {
+        self.callback = Some(CallbackOwner { ptr, drop_fn });
     }
 }
 
@@ -184,21 +218,15 @@ unsafe fn drop_dyn_cb(ptr: *mut ()) {
 }
 
 /// Common trampoline used by both timer and async callbacks.
-unsafe extern "C" fn trampoline(
+pub(crate) unsafe extern "C" fn trampoline(
     l: *mut sys::xev_loop,
     c: *mut sys::xev_completion,
     result: c_int,
     userdata: *mut c_void,
 ) -> sys::xev_cb_action {
     let cb = unsafe { &mut *(userdata as *mut Box<DynCb>) };
-    let mut lr = LoopRef {
-        raw: l,
-        _marker: PhantomData,
-    };
-    let mut cr = CompletionRef {
-        raw: c,
-        _marker: PhantomData,
-    };
+    let mut lr = unsafe { LoopRef::from_raw(l) };
+    let mut cr = unsafe { CompletionRef::from_raw(c) };
     cb(&mut lr, &mut cr, result).to_raw()
 }
 

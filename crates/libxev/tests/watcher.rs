@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -118,6 +118,9 @@ fn timer_cancel_fires_cancel_completion() {
     // (non-zero), and the cancel completion's callback fires exactly once.
     let results = timer_results.lock().unwrap().clone();
     assert_eq!(results.len(), 1, "timer cb should fire once with error");
-    assert_ne!(results[0], 0, "timer cb result should be non-zero on cancel");
+    assert_ne!(
+        results[0], 0,
+        "timer cb result should be non-zero on cancel"
+    );
     assert_eq!(cancel_fired.load(Ordering::SeqCst), 1);
 }

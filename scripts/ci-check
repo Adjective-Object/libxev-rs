@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# CI verification: run tests, clippy (no warnings), and build with/without
+# the extended-api feature.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+run() {
+    echo
+    echo "==> $*"
+    "$@"
+}
+
+# Formatting must be clean.
+run cargo fmt --all -- --check
+
+# Tests across the workspace.
+run cargo nextest run --workspace --no-fail-fast
+
+# Clippy: fail on any warning. Run both with and without extended-api so
+# the gated `extensions/` modules are also linted.
+run cargo clippy --workspace --all-targets -- -D warnings
+run cargo clippy -p libxev -p libxev-sys --all-targets \
+    --features libxev/extended-api -- -D warnings
+
+# Build matrix: without extended-api (whole workspace) and with extended-api
+# (the crates that expose the feature).
+run cargo build --workspace
+run cargo build -p libxev -p libxev-sys --features libxev/extended-api
+
+echo
+echo "All CI checks passed."

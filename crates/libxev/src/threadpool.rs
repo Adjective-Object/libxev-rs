@@ -164,7 +164,11 @@ impl Batch {
         }
         // Prevent the Task destructor (if any) from running; the inner
         // allocation is now owned by the threadpool.
+        //
+        // Task does not currently implement Drop, defend with clippy expect
+        // in case that ever changes.
         let _ = task.inner;
+        #[expect(clippy::forget_non_drop)]
         std::mem::forget(task);
     }
 }
@@ -182,8 +186,8 @@ fn _unused_cvoid(_: *mut c_void) {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn run_tasks_to_completion() {
